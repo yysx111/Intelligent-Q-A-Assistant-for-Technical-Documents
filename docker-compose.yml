@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  rag-app:
+    build: .
+    container_name: rag-technical-docs
+    ports:
+      - "8000:8000"  # FastAPI
+      - "8501:8501"  # Streamlit
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env
+    environment:
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    restart: unless-stopped

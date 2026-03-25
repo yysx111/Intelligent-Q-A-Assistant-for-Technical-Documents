@@ -1,0 +1,32 @@
+# Web框架
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# LangChain
+langchain==0.1.0
+langchain-community==0.0.10
+langchain-chroma==0.0.5
+
+# 通义千问
+dashscope==1.14.0
+
+# 向量数据库
+chromadb==0.4.22
+
+# 嵌入模型和重排序
+sentence-transformers==2.3.1
+FlagEmbedding==1.2.5
+
+# 文档处理
+pypdf==3.17.4
+python-docx==1.1.0
+unstructured==0.11.8
+
+# 前端
+streamlit==1.30.0
+
+# 其他
+python-dotenv==1.0.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
