@@ -1,9 +1,13 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 class Settings(BaseSettings):
-    dashscope_api_key: str
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
+
+    dashscope_api_key: str = ""
     qwen_model: str = "qwen-turbo"
+    max_retries: int = 3
+    retry_delay: float = 1.0
     
     chroma_persist_dir: str = "./data/chroma"
     
@@ -15,13 +19,13 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-large-zh-v1.5"
     rerank_model: str = "BAAI/bge-reranker-large"
     rerank_top_k: int = 5
+
+    hybrid_alpha: float = 0.7
+    vector_search_k: int = 10
+    keyword_search_k: int = 10
     
     app_host: str = "0.0.0.0"
     app_port: int = 8000
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
 
 @lru_cache()
 def get_settings() -> Settings:

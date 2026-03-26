@@ -6,7 +6,7 @@ def get_embeddings():
     settings = get_settings()
     
     model_kwargs = {
-        'device': 'cuda',  # 或 'cpu'
+        'device': 'cpu',  # 或 'cpu'
         'trust_remote_code': True
     }
     

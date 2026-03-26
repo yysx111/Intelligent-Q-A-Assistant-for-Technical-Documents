@@ -6,7 +6,7 @@ python-multipart==0.0.6
 # LangChain
 langchain==0.1.0
 langchain-community==0.0.10
-langchain-chroma==0.0.5
+langchain-chroma==0.1.2
 
 # 通义千问
 dashscope==1.14.0
