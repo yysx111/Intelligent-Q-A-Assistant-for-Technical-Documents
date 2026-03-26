@@ -1,59 +1,96 @@
-from typing import Optional, Tuple
+import time
+import uuid
+from typing import Optional
 import numpy as np
+import chromadb
 from app.rag.embeddings import get_embeddings
 from app.config import get_settings
 
 class SemanticCache:
-    """基于Embedding相似度的语义缓存"""
-    
     def __init__(self):
         self.settings = get_settings()
         self.embeddings = get_embeddings()
-        self.cache = {}  # {query_embedding: (answer, metadata)}
-        self.max_size = self.settings.cache_max_size
         self.threshold = self.settings.cache_similarity_threshold
+        self.max_size = self.settings.cache_max_size
+        self.client = chromadb.PersistentClient(path=self.settings.chroma_persist_dir)
+        self.collection = self.client.get_or_create_collection(
+            name=self.settings.cache_collection_name,
+            metadata={"hnsw:space": "cosine"}
+        )
     
-    def _get_embedding(self, text: str) -> np.ndarray:
-        """获取文本嵌入"""
-        embedding = self.embeddings.embed_query(text)
-        return np.array(embedding)
-    
-    def _cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
-        """计算余弦相似度"""
-        return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+    def _get_embedding(self, text: str) -> list[float]:
+        return list(self.embeddings.embed_query(text))
     
     def get(self, query: str) -> Optional[dict]:
-        """查询缓存"""
         if not self.settings.cache_enabled:
             return None
-        
-        query_embedding = self._get_embedding(query)
-        
-        for cached_query, (answer, metadata) in self.cache.items():
-            cached_embedding = self._get_embedding(cached_query)
-            similarity = self._cosine_similarity(query_embedding, cached_embedding)
-            
-            if similarity >= self.threshold:
-                return {
-                    "answer": answer,
-                    "metadata": metadata,
-                    "similarity": similarity,
-                    "cache_hit": True
-                }
-        
-        return None
+        embedding = self._get_embedding(query)
+        result = self.collection.query(
+            query_embeddings=[embedding],
+            n_results=1,
+            include=["documents", "metadatas", "distances", "ids"]
+        )
+        ids = result.get("ids", [[]])[0]
+        if not ids:
+            return None
+        distance = result.get("distances", [[1.0]])[0][0]
+        similarity = 1.0 - float(distance)
+        if similarity < self.threshold:
+            return None
+        doc = result.get("documents", [[""]])[0][0]
+        meta = result.get("metadatas", [[{}]])[0][0] or {}
+        meta["last_access"] = time.time()
+        meta["hit_count"] = int(meta.get("hit_count", 0)) + 1
+        self.collection.update(ids=[ids[0]], metadatas=[meta])
+        return {
+            "answer": doc,
+            "metadata": meta,
+            "similarity": similarity,
+            "cache_hit": True
+        }
+    
+    def _evict_if_needed(self):
+        count = self.collection.count()
+        if count < self.max_size:
+            return
+        data = self.collection.get(include=["metadatas", "ids"])
+        ids = data.get("ids", [])
+        metas = data.get("metadatas", [])
+        if not ids:
+            return
+        oldest_idx = 0
+        oldest_ts = float("inf")
+        for i, m in enumerate(metas):
+            ts = float(m.get("last_access", m.get("created_at", time.time())))
+            if ts < oldest_ts:
+                oldest_ts = ts
+                oldest_idx = i
+        self.collection.delete(ids=[ids[oldest_idx]])
     
     def set(self, query: str, answer: str, metadata: dict):
-        """设置缓存"""
         if not self.settings.cache_enabled:
             return
-        
-        if len(self.cache) >= self.max_size:
-            # 简单的LRU策略：删除最旧的
-            self.cache.pop(next(iter(self.cache)))
-        
-        self.cache[query] = (answer, metadata)
+        self._evict_if_needed()
+        doc_id = uuid.uuid4().hex
+        now = time.time()
+        meta = {
+            "question": query,
+            "created_at": now,
+            "last_access": now,
+            "hit_count": 0
+        }
+        if isinstance(metadata, dict):
+            meta.update(metadata)
+        embedding = self._get_embedding(query)
+        self.collection.add(
+            ids=[doc_id],
+            embeddings=[embedding],
+            documents=[answer],
+            metadatas=[meta]
+        )
     
     def clear(self):
-        """清空缓存"""
-        self.cache.clear()
+        data = self.collection.get(include=["ids"])
+        ids = data.get("ids", [])
+        if ids:
+            self.collection.delete(ids=ids)
